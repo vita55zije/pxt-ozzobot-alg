@@ -1,0 +1,31 @@
+{
+    "name": "TestSenzors",
+    "description": "",
+    "dependencies": {
+        "core": "*",
+        "radio": "*",
+        "microphone": "*",
+        "pxt-PlanetX": "github:elecfreaks/pxt-planetx#v1.5.15"
+    },
+    "files": [
+        "main.ts",
+        "README.md",
+        "magicbit.ts",
+        "sensorbit.ts",
+        "EMRGBLight.ts",
+        "motor.ts"
+    ],
+    "testFiles": [
+        "test.ts"
+    ],
+    "targetVersions": {
+        "target": "6.0.28",
+        "pxt": "9.0.12",
+        "targetId": "microbit"
+    },
+    "supportedTargets": [
+        "microbit"
+    ],
+    "preferredEditor": "tsprj",
+    "languageRestriction": "javascript-only"
+}
