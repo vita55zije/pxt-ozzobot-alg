@@ -1,4 +1,5 @@
-enum Movement{TurnL,TurnR, FollowLine, TurnU, Stopped,Unknown}
+//konfigurace motorů a zakladni funkce v motor.ts
+enum Pohyb{Doleva,Doprava, SledujCaru, Otocit, Zastaveno,Unknown}
 enum Color { Red, Green, Blue, None, Black, White, Yellow }
 
 const InfraR: DigitalPin= DigitalPin.P13;
@@ -28,22 +29,21 @@ let InfraRValue: boolean;
 let InfraCValue: boolean;
 
 let loopStopped:boolean=false;
-let showLineSensors:boolean=false; //switch to display line infra sensors state on display
-let stopOnTurn0:boolean=false; //switch to true to stop - for testing 
-let stopOnTurn1: boolean = false;//switch to true to stop - for testing 
-let stopOnFollowLineSet:boolean=false;
-let testMotorSinc:boolean=false;//switch on if motor test expected
-let detectNotOnTable:boolean=true;
-let detectNotOnLine: boolean = true;
+let showLineSensors:boolean=false; //když true, zobrazí detekci senzorů na displayi
+let stopOnTurn0:boolean=false; //zapnout při testování 
+let stopOnTurn1: boolean = false;//zapnout při testování
+let testMotorSinc:boolean=false;//zapnout při testování
+let detectNotOnTable:boolean=true;//detekce auticka na stole
+let detectNotOnLine: boolean = true;//detekce auticka na čáře
 
-let WheelPulsesCrossAllowed:number=0;
-let TurnPhase:number=0;
+let PulzyProKrizovatku:number=0;//detekci krizovatky po urcitem mnozstvi pulzu kola
+let FazeOtaceni:number=0;
 
 const PrevCnt:number=6;
-const DefaultMovementOnCross:Movement=Movement.TurnR;
-let MovementOnCross:Movement=DefaultMovementOnCross;
-let MovementCurrent:Movement=Movement.Stopped;
-let MovementPrev: Movement = MovementCurrent;
+const DefaultPohybNaKrizovatce:Pohyb=Pohyb.Doprava;
+let PohybNaKrizovatce:Pohyb=DefaultPohybNaKrizovatce;
+let PohybSoucasny:Pohyb=Pohyb.Zastaveno;
+let PohybPredchozi: Pohyb = PohybSoucasny;
 
 MotorsRun(0, 0);
 
@@ -77,22 +77,8 @@ function GetColor(hue:number, defaultColor:Color):Color
     if (hue > 120 && hue < 180) return Color.Green;
     if (hue > 30 && hue < 120 ) return Color.Yellow;
     if (hue > 210 && hue < 270) return Color.Blue;
-    //if (hue >= 180 && hue < 190) return Color.White; //198
+    //if (hue >= 180 && hue < 190) return Color.White; //198 //senzor bílou NEDETEKUJE
     return defaultColor;
-}
-function GetColorsStr(colors:Color[]) :string
-{
-    let colorsStr:string="";
-    for (let i = 0; i < colors.length;i++)
-    {
-        if (colors[i]==Color.None) return colorsStr;
-        if (colors[i]==Color.Red) colorsStr+="R";
-        if (colors[i] == Color.Blue) colorsStr += "B";
-        if (colors[i]==Color.Green) colorsStr+="G";
-        if (colors[i]==Color.Black) colorsStr+="N";
-        if (colors[i] == Color.White) colorsStr += "W";
-    }
-    return colorsStr;
 }
 
 function GetColorStr(color: Color): string {
@@ -107,7 +93,7 @@ function GetColorStr(color: Color): string {
     return "/";
 }
 
-function ShowMovement(mov:Movement)
+function ShowMovement(mov:Pohyb)
 {
     //return;
     let currentLSpeed=MotorLSpeed;
@@ -115,19 +101,19 @@ function ShowMovement(mov:Movement)
     MotorsRun(0,0);
     let charToShow:string="/";
     switch(mov){
-        case Movement.TurnL:
+        case Pohyb.Doleva:
             charToShow="<";
             break;
-        case Movement.TurnR:
+        case Pohyb.Doprava:
             charToShow=">";
             break;
-        case Movement.FollowLine:
+        case Pohyb.SledujCaru:
             charToShow="^";
             break;
-        case Movement.TurnU:
+        case Pohyb.Otocit:
             charToShow="v";
             break;
-        case Movement.Stopped:
+        case Pohyb.Zastaveno:
             charToShow="-";
             break;
         default:
@@ -138,15 +124,15 @@ function ShowMovement(mov:Movement)
     MotorsRun(currentLSpeed,currentRSpeed);
 }
 
-function MovementCurrentSet(mov:Movement)
+function PohybSoucasnySet(mov:Pohyb)
 {
-    MovementCurrent=mov;
+    PohybSoucasny=mov;
 
 }
 
 pins.onPulsed(wheelSenzorL,PulseValue.High,()=>{
     WheelPulsesL++;
-    WheelPulsesCrossAllowed++;
+    PulzyProKrizovatku++;
 
 });
 pins.onPulsed(wheelSenzorR, PulseValue.High, () => {
@@ -169,9 +155,9 @@ input.onButtonPressed(Button.A, function() {
     basic.showString(GetColorStr(GetColor(hue,Color.None)));
     
     /*
-    if (MovementCurrent == Movement.TurnL) basic.showString("<");
-    if (MovementCurrent == Movement.TurnR) basic.showString(">");
-    if (MovementCurrent == Movement.FollowLine) basic.showString("^");
+    if (PohybSoucasny == Pohyb.Doleva) basic.showString("<");
+    if (PohybSoucasny == Pohyb.Doprava) basic.showString(">");
+    if (PohybSoucasny == Pohyb.SledujCaru) basic.showString("^");
     */
     
     loopStopped=false;
@@ -183,11 +169,11 @@ input.onButtonPressed(Button.B, function () {
         return;
     }
     loopStopped=true;
-    if (MovementOnCross == Movement.TurnL) basic.showString("<");
-    if (MovementOnCross == Movement.TurnR) basic.showString(">");
-    if (MovementOnCross == Movement.FollowLine) basic.showString("^");
+    if (PohybNaKrizovatce == Pohyb.Doleva) basic.showString("<");
+    if (PohybNaKrizovatce == Pohyb.Doprava) basic.showString(">");
+    if (PohybNaKrizovatce == Pohyb.SledujCaru) basic.showString("^");
     pause(200);
-    ShowMovement(MovementCurrent);
+    ShowMovement(PohybSoucasny);
 
     loopStopped=false;
     /*
@@ -203,7 +189,7 @@ input.onButtonPressed(Button.B, function () {
 
 
 basic.forever(function() {
-    if(testMotorSinc)return;//testing motors
+    if(testMotorSinc)return;//testovani motorů
     if(loopStopped) return;
     InfraLValue= pins.digitalReadPin(InfraL)==1;
     InfraCValue=pins.digitalReadPin(InfraC)==1;
@@ -211,7 +197,7 @@ basic.forever(function() {
 
 
     if(showLineSensors){
-        //show infra sensors state on display
+        //zobrazit stav motorů ma display mc:b
         if (InfraLValue) led.plot(0,0); else led.unplot(0,0);
         if (InfraCValue) led.plot(2, 4); else led.unplot(2,4);
         if (InfraRValue) led.plot(4,0); else led.unplot(4,0);
@@ -221,48 +207,48 @@ basic.forever(function() {
 
     PositionCurr=(InfraLValue?"1":"0") + (InfraCValue?"1":"0") + (InfraRValue?"1":"0");
     
-    //detect out of line 
+    //detekovat čáru 
     if(detectNotOnLine)
     {
-        if (PositionCurr == "000" && PositionPrev == "000" && PositionPrevCounter > PrevCnt && MovementCurrent==Movement.FollowLine )
+        if (PositionCurr == "000" && PositionPrev == "000" && PositionPrevCounter > PrevCnt && PohybSoucasny==Pohyb.SledujCaru )
         {
             //do nothing if turning
-            //if(!(MovementCurrent==Movement.TurnL || MovementCurrent==Movement.TurnR || MovementCurrent==Movement.TurnU))
+            //if(!(PohybSoucasny==Pohyb.Doleva || PohybSoucasny==Pohyb.Doprava || PohybSoucasny==Pohyb.Otocit))
             //{
                 //out of line
                 //long time 000
                 OnLine=false;
-                MovementCurrentSet(Movement.Stopped);
+                PohybSoucasnySet(Pohyb.Zastaveno);
                 MotorsRun(0,0);
-                ShowMovement(MovementCurrent);
+                ShowMovement(PohybSoucasny);
             //}
 
         }
     }
     if(detectNotOnTable)
     {
-        if (PositionCurr == "111" && PositionPrev == "111" && PositionPrevCounter > PrevCnt * 2 && MovementCurrent !=Movement.Stopped) {
-            //probably not on the table, stop it for each casses
+        if (PositionCurr == "111" && PositionPrev == "111" && PositionPrevCounter > PrevCnt * 2 && PohybSoucasny !=Pohyb.Zastaveno) {
+            //nejspíše není na stole
             OnLine=false;
-            MovementCurrentSet(Movement.Stopped);
+            PohybSoucasnySet(Pohyb.Zastaveno);
             MotorsRun(0, 0);
-            ShowMovement(MovementCurrent);
+            ShowMovement(PohybSoucasny);
     
 
         }
     }
-    if(MovementCurrent==Movement.Stopped && PositionCurr=="010")
+    if(PohybSoucasny==Pohyb.Zastaveno && PositionCurr=="010")
     {
-        //stopped, however on the line by central sensor, then MotorRun
-        //reset to basic first
-        MovementOnCross=DefaultMovementOnCross;
-        TurnPhase=0;
+        //přechod z režimu zastaveno do rezimu sleduj caru, kdyz prostredni senzor detekuje čáru
+        //vše resetovat
+        PohybNaKrizovatce=DefaultPohybNaKrizovatce;
+        FazeOtaceni=0;
         WheelPulsesL=0;
         WheelPulsesR=0;
-        WheelPulsesCrossAllowed=0;
-        MovementCurrentSet(Movement.FollowLine);
+        PulzyProKrizovatku=0;
+        PohybSoucasnySet(Pohyb.SledujCaru);
     }
-    if (MovementCurrent == Movement.FollowLine)
+    if (PohybSoucasny == Pohyb.SledujCaru)
     {
         
         if (OnLine) {
@@ -278,20 +264,20 @@ basic.forever(function() {
 
         
 
-            //work with colors in stright  and on line only
+            //barvy pouze na rovné čáře
             
             let hue=PlanetX_Basic.readColor();
             let color: Color = GetColor(hue, Color.Black);
-            //work with the single color, instead of sequences
-            if (color == Color.Green) MovementOnCross = Movement.TurnL;
+            //pracovat jen s 1 barvou, senzor špatně detekuje sekvenci barev jdoucích po sobě
+            if (color == Color.Green) PohybNaKrizovatce = Pohyb.Doleva;
             if (color == Color.Blue)
             { 
-                //don't use blue because detected wrongly
+                //nepoužívat modrou barvu, senzor špatně detekuje
             }
-            if (color == Color.Yellow) MovementOnCross = Movement.FollowLine;
+            if (color == Color.Yellow) PohybNaKrizovatce = Pohyb.SledujCaru;
             if (color==Color.Red){ 
-                MovementCurrentSet(Movement.TurnU);
-                TurnPhase=0;
+                PohybSoucasnySet(Pohyb.Otocit);
+                FazeOtaceni=0;
             }
             
             
@@ -303,7 +289,7 @@ basic.forever(function() {
         InfraRValue = pins.digitalReadPin(InfraR) == 1;
         PositionCurr = (InfraLValue ? "1" : "0") + (InfraCValue ? "1" : "0") + (InfraRValue ? "1" : "0");
 
-        //follow the line
+        //sleduj čáru
         if (PositionCurr == "010") {
 
             OnLine=true;
@@ -317,11 +303,11 @@ basic.forever(function() {
 
 
 
-        if ((PositionCurr == "111" || PositionCurr == "101") && OnLine && WheelPulsesCrossAllowed>10) {
-            //on cross 
-            TurnPhase=0;
-            MovementCurrentSet(MovementOnCross);
-            //MovementOnCross=DefaultMovementOnCross;
+        if ((PositionCurr == "111" || PositionCurr == "101") && OnLine && PulzyProKrizovatku>10) {
+            //na křižovatce 
+            FazeOtaceni=0;
+            PohybSoucasnySet(PohybNaKrizovatce);
+            //PohybNaKrizovatce=DefaultPohybNaKrizovatce;
             MotorsRun(0,0);
             
  
@@ -330,62 +316,52 @@ basic.forever(function() {
 
     }
 
-    if(MovementCurrent==Movement.TurnU)
+    if(PohybSoucasny==Pohyb.Otocit)
     {
-        //180 turning
-        //rotate at least 12 signals and wait till central sensor cross the line
-        if(TurnPhase==0)
+        //otočení o 180
+        //otočit o 12 pulsů, pak kontrolovat detekci prostředního senzoru čáry
+        if(FazeOtaceni==0)
         {
             WheelPulsesL=0;
             WheelPulsesR=0;
-            TurnPhase=1;
+            FazeOtaceni=1;
             MotorsRun(120,-120);
-            MovementOnCross= DefaultMovementOnCross;
+            PohybNaKrizovatce= DefaultPohybNaKrizovatce;
 
         }
-        if(TurnPhase==1 && (WheelPulsesL>12|| WheelPulsesR>12 ) && InfraCValue)
+        if(FazeOtaceni==1 && (WheelPulsesL>12|| WheelPulsesR>12 ) && InfraCValue)
         {
             MotorsRun(0,0);
-            MovementCurrentSet(Movement.FollowLine);
+            PohybSoucasnySet(Pohyb.SledujCaru);
         }
 
     }
 
-    if (MovementCurrent == Movement.TurnL || MovementCurrent== Movement.TurnR)
+    if (PohybSoucasny == Pohyb.Doleva || PohybSoucasny== Pohyb.Doprava)
     {
         /*
-                1.move three signals forward to achieve the line aprox
-                2. rotate at least 6 signals 
-                3. rotate til middle sensor identify the line
-                4. continue stright
+                1. posunout 3 pulsy do předu(senzory nejsou přesně pod koly)
+                2. otočit o nejméně 6 pulsů
+                3. pokračovat v otáčení a začít kontrolovat detekci prostředního senzoru čáry
+                4. pokračovat rovně z křižovatky
         
                 */
                 
-        if (TurnPhase == 0) {
+        if (FazeOtaceni == 0) {
             if(stopOnTurn0)
             {
                 MotorsRun(0,0);
                 basic.showString("P0");
                 pause(1000);
-                ShowMovement(MovementCurrent);
+                ShowMovement(PohybSoucasny);
             }
             WheelPulsesL = 0;
             WheelPulsesR = 0;
-            TurnPhase = 1;
+            FazeOtaceni = 1;
             MotorsRun(-120, -120);
         }
-        /*
-        if(TurnPhase==1 && stopOnTurn1)
-        {
-            MotorsRun(0,0);
-            pause(1);
-            basic.showNumber(WheelPulsesL);
-            pause(1000);
-            MotorsRun(-120,-120);
-            pause(100);
-        }
-        */
-        if ( TurnPhase == 1 && (WheelPulsesL >= 3 || WheelPulsesR >= 3)) {
+
+        if ( FazeOtaceni == 1 && (WheelPulsesL >= 3 || WheelPulsesR >= 3)) {
             if (stopOnTurn1) {
                 MotorsRun(0, 0);
                 basic.showString("1");
@@ -393,29 +369,29 @@ basic.forever(function() {
             }
             WheelPulsesL = 0;
             WheelPulsesR = 0;
-            TurnPhase = 2;
-            if (MovementCurrent == Movement.TurnL)
+            FazeOtaceni = 2;
+            if (PohybSoucasny == Pohyb.Doleva)
                 MotorsRun(120, -120);
             else
                 MotorsRun(-120, 120);
         }
         
-        if (TurnPhase == 2 && (WheelPulsesL > 6 || WheelPulsesR > 6) && (InfraRValue && MovementCurrent == Movement.TurnR || InfraLValue && MovementCurrent == Movement.TurnL)) {
+        if (FazeOtaceni == 2 && (WheelPulsesL > 6 || WheelPulsesR > 6) && (InfraRValue && PohybSoucasny == Pohyb.Doprava || InfraLValue && PohybSoucasny == Pohyb.Doleva)) {
             
-            //TurnPhase = 3; //not necessary because turn alread finished
+            //FazeOtaceni = 3; //není nutné, otočka už provedena
             MotorsRun(0, 0);
-            MovementOnCross=DefaultMovementOnCross;
-            MovementCurrentSet(Movement.FollowLine);
+            PohybNaKrizovatce=DefaultPohybNaKrizovatce;
+            PohybSoucasnySet(Pohyb.SledujCaru);
         }
     }
 
 
 
     PositionPrevWrite(PositionCurr);
-    if(MovementCurrent!=MovementPrev)
+    if(PohybSoucasny!=PohybPredchozi)
     {
-        MovementPrev=MovementCurrent;
-        ShowMovement(MovementCurrent);
+        PohybPredchozi=PohybSoucasny;
+        ShowMovement(PohybSoucasny);
     }
 
 
