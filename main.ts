@@ -2,13 +2,15 @@
 enum Pohyb{Doleva,Doprava, SledujCaru, Otocit, Zastaveno,Unknown}
 enum Color { Red, Green, Blue, None, Black, White, Yellow }
 
-const InfraR: DigitalPin= DigitalPin.P13;
+
+//senzor ve stavu 1 kdyz na care nebo ve vzduchu, stav 0 kdyz je na stole mimo caru
+const InfraR: DigitalPin= DigitalPin.P13;//senzory detekce čary
 const InfraL: DigitalPin = DigitalPin.P14;
 const InfraC: DigitalPin = DigitalPin.P15;
 
-//8, 12
-const wheelSenzorL:DigitalPin=DigitalPin.P12;
-const wheelSenzorR:DigitalPin=DigitalPin.P8;
+
+const wheelSenzorL:DigitalPin=DigitalPin.P12;//senzor otaceni L kolecka
+const wheelSenzorR: DigitalPin = DigitalPin.P8;//senzor otaceni P kolecka
 pins.setPull(InfraL, PinPullMode.PullUp);
 pins.setPull(InfraR, PinPullMode.PullUp);
 pins.setPull(InfraC, PinPullMode.PullUp);
@@ -16,13 +18,14 @@ pins.setPull(InfraC, PinPullMode.PullUp);
 pins.setPull(wheelSenzorL, PinPullMode.PullUp);
 pins.setPull(wheelSenzorR, PinPullMode.PullUp);
 
-let WheelPulsesL:number=0;
+let WheelPulsesL:number=0;//počítadlo pulsů otačení kolečka
 let WheelPulsesR:number=0;
 
-let OnLine:boolean=false;
-let PositionCurr:string="";
-let PositionPrev:string="";
-let PositionPrevCounter:number=0;
+let OnLine:boolean=false;//true jestliže je na čáře
+let PositionCurr:string="";//stav senzorů detekujících čáru
+let PositionPrev:string="";//předchozí stav senzorů čáry
+let PositionPrevCounter:number=0;//počet opakování předchozího stavu
+const PrevCnt:number=6;//pocet opakovani stavu senzoru pro detekci mimo caru a zvednuti ze stolu
 
 let InfraLValue: boolean;
 let InfraRValue: boolean;
@@ -32,14 +35,14 @@ let loopStopped:boolean=false;
 let showLineSensors:boolean=false; //když true, zobrazí detekci senzorů na displayi
 let stopOnTurn0:boolean=false; //zapnout při testování 
 let stopOnTurn1: boolean = false;//zapnout při testování
-let testMotorSinc:boolean=false;//zapnout při testování
+let testMotorSinc:boolean=false;//zapnout pro testování motoru tlacitkem a/b
 let detectNotOnTable:boolean=true;//detekce auticka na stole
 let detectNotOnLine: boolean = true;//detekce auticka na čáře
 
-let PulzyProKrizovatku:number=0;//detekci krizovatky po urcitem mnozstvi pulzu kola
-let FazeOtaceni:number=0;
+let PulzyProKrizovatku:number=0;//detekce krizovatky povolena po urcitem poctu pulzukola
+const KrizovatkaPovolenaPo:number = 10;
+let FazeOtaceni:number=0; 
 
-const PrevCnt:number=6;
 const DefaultPohybNaKrizovatce:Pohyb=Pohyb.Doprava;
 let PohybNaKrizovatce:Pohyb=DefaultPohybNaKrizovatce;
 let PohybSoucasny:Pohyb=Pohyb.Zastaveno;
@@ -54,7 +57,7 @@ MotorsRun(0, 0);
 
 
 
-
+//zaznamena posledni stav senzoru cary, kdyz se nemeni, funkce zvysuje pocitadlo
 function PositionPrevWrite(s:string)
 {
     if (PositionPrev==s)
@@ -129,7 +132,7 @@ function PohybSoucasnySet(mov:Pohyb)
     PohybSoucasny=mov;
 
 }
-
+//udalost nastane kdyz probehne otoceni kolecka o jeden pulz
 pins.onPulsed(wheelSenzorL,PulseValue.High,()=>{
     WheelPulsesL++;
     PulzyProKrizovatku++;
@@ -149,16 +152,10 @@ input.onButtonPressed(Button.A, function() {
         return;
     }
     loopStopped=true;
-    
+    //zobrazi barvu nad kterou je senzor
     let hue = PlanetX_Basic.readColor();
     basic.showNumber(hue);
     basic.showString(GetColorStr(GetColor(hue,Color.None)));
-    
-    /*
-    if (PohybSoucasny == Pohyb.Doleva) basic.showString("<");
-    if (PohybSoucasny == Pohyb.Doprava) basic.showString(">");
-    if (PohybSoucasny == Pohyb.SledujCaru) basic.showString("^");
-    */
     
     loopStopped=false;
 
@@ -176,12 +173,6 @@ input.onButtonPressed(Button.B, function () {
     ShowMovement(PohybSoucasny);
 
     loopStopped=false;
-    /*
-    loopStopped=true;
-    basic.showString(GetColorStr(Colors[0]));
-    basic.clearScreen();
-    loopStopped=false;
-    */
 })
 
 
@@ -191,42 +182,44 @@ input.onButtonPressed(Button.B, function () {
 basic.forever(function() {
     if(testMotorSinc)return;//testovani motorů
     if(loopStopped) return;
+
+    //přečte stav senzoru čary
     InfraLValue= pins.digitalReadPin(InfraL)==1;
     InfraCValue=pins.digitalReadPin(InfraC)==1;
     InfraRValue=pins.digitalReadPin(InfraR)==1;
 
 
     if(showLineSensors){
-        //zobrazit stav motorů ma display mc:b
+        //zobrazit stav senzorů cary na display mc:b, pouze pokud povoleno showLineSensors
         if (InfraLValue) led.plot(0,0); else led.unplot(0,0);
         if (InfraCValue) led.plot(2, 4); else led.unplot(2,4);
         if (InfraRValue) led.plot(4,0); else led.unplot(4,0);
     }
 
 
-
+    //prevede stav senzoru cary na string( např. 000 || 001)
     PositionCurr=(InfraLValue?"1":"0") + (InfraCValue?"1":"0") + (InfraRValue?"1":"0");
     
-    //detekovat čáru 
+    //detekovat jestli na care 
     if(detectNotOnLine)
     {
+        //kdyz ma sledovat caru a pri tom senzory ve stavu 000 po dlouhou dobu, nastane kdyz vyjede z cary
         if (PositionCurr == "000" && PositionPrev == "000" && PositionPrevCounter > PrevCnt && PohybSoucasny==Pohyb.SledujCaru )
         {
-            //do nothing if turning
-            //if(!(PohybSoucasny==Pohyb.Doleva || PohybSoucasny==Pohyb.Doprava || PohybSoucasny==Pohyb.Otocit))
-            //{
-                //out of line
-                //long time 000
-                OnLine=false;
-                PohybSoucasnySet(Pohyb.Zastaveno);
-                MotorsRun(0,0);
-                ShowMovement(PohybSoucasny);
-            //}
+
+            OnLine=false;
+            PohybSoucasnySet(Pohyb.Zastaveno);
+            MotorsRun(0,0);
+            ShowMovement(PohybSoucasny);
+
 
         }
     }
+
+    //detekovat jestli je na stole
     if(detectNotOnTable)
     {
+        //pokud dlouho 111 predpoklada se zvednuti ze stolu
         if (PositionCurr == "111" && PositionPrev == "111" && PositionPrevCounter > PrevCnt * 2 && PohybSoucasny !=Pohyb.Zastaveno) {
             //nejspíše není na stole
             OnLine=false;
@@ -264,7 +257,7 @@ basic.forever(function() {
 
         
 
-            //barvy pouze na rovné čáře
+            //barvy detekuj pouze v režimu Pohyb.SledujCaru
             
             let hue=PlanetX_Basic.readColor();
             let color: Color = GetColor(hue, Color.Black);
@@ -283,7 +276,7 @@ basic.forever(function() {
             
 
         }
-
+        //opakovane nacteni stavu senzorů čary, protože detekce barvy trva dlouho
         InfraLValue = pins.digitalReadPin(InfraL) == 1;
         InfraCValue = pins.digitalReadPin(InfraC) == 1;
         InfraRValue = pins.digitalReadPin(InfraR) == 1;
@@ -303,11 +296,11 @@ basic.forever(function() {
 
 
 
-        if ((PositionCurr == "111" || PositionCurr == "101") && OnLine && PulzyProKrizovatku>10) {
+        if ((PositionCurr == "111" || PositionCurr == "101") && OnLine && PulzyProKrizovatku > KrizovatkaPovolenaPo) {
             //na křižovatce 
             FazeOtaceni=0;
             PohybSoucasnySet(PohybNaKrizovatce);
-            //PohybNaKrizovatce=DefaultPohybNaKrizovatce;
+            PohybNaKrizovatce=DefaultPohybNaKrizovatce;//nastav přísti pohyb na krizovatce na default
             MotorsRun(0,0);
             
  
@@ -342,7 +335,7 @@ basic.forever(function() {
         /*
                 1. posunout 3 pulsy do předu(senzory nejsou přesně pod koly)
                 2. otočit o nejméně 6 pulsů
-                3. pokračovat v otáčení a začít kontrolovat detekci prostředního senzoru čáry
+                3. pokračovat v otáčení a začít kontrolovat detekci senzorů čár
                 4. pokračovat rovně z křižovatky
         
                 */
@@ -380,7 +373,7 @@ basic.forever(function() {
             
             //FazeOtaceni = 3; //není nutné, otočka už provedena
             MotorsRun(0, 0);
-            PohybNaKrizovatce=DefaultPohybNaKrizovatce;
+            //PohybNaKrizovatce=DefaultPohybNaKrizovatce;
             PohybSoucasnySet(Pohyb.SledujCaru);
         }
     }
