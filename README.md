@@ -1,4 +1,4 @@
-
+Video ukázka jízdy "Ozzobota": https://www.youtube.com/watch?v=doRPw8p6gpo
 > Open this page at [https://vita55zije.github.io/pxt-ozzobot-alg/](https://vita55zije.github.io/pxt-ozzobot-alg/)
 
 ## Use as Extension
